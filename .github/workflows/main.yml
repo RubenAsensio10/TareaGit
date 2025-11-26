@@ -1,0 +1,62 @@
+name: CI — Node.js
+
+# Ejecutar en pushes y PRs a ramas principales
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Test on Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Verify Node and npm
+        run: |
+          node -v
+          npm -v
+
+      - name: Install dependencies (fast, deterministic)
+        # usa npm ci si tienes package-lock.json; cae a npm install si no existe
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Lint (if exists)
+        if: always()
+        run: |
+          if grep -q "\"lint\"" package.json; then npm run lint; else echo "No lint script"; fi
+
+      - name: Run build (if exists)
+        if: always()
+        run: |
+          if grep -q "\"build\"" package.json; then npm run build; else echo "No build script"; fi
+
+      - name: Run tests
+        run: |
+          # Preferir script "test" en package.json. Falla si el exit code != 0.
+          if grep -q "\"test\"" package.json; then npm test --silent; else echo "Add a test script to package.json (e.g. \"test\": \"npm run your-test-runner\")" && exit 1; fi
+
+      - name: Save test logs (artifact)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            npm-debug.log
+            test-results/**/*.xml
+            ./logs || true
